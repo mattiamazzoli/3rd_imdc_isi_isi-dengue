@@ -1,5 +1,5 @@
 # 1. Team and Contributors  
-### Team Name: ISI Foundation
+### Team Name: ISI Dengue
 
 ### Members  
 * **Davide Nicola** – Junior Researcher, ISI Foundation
