@@ -18,11 +18,12 @@ TBD
 # 3. Libraries and Dependencies  
 TODO: All Python dependencies are listed in `requirements.txt`. Key packages include:
 
-- `numpy`, `pandas`, `scipy`, `matplotlib`, `arviz`  
+- `numpy`, `pandas`, `scipy` (for basic data handling)
+- `matplotlib`, `arviz`  (for visualization)
 - `pymc` (for Bayesian modeling)  
 - `numba` (for accelerating ODE computations)  
-- `meteostat`, `geopy`, `requests` (for weather and geolocation APIs)  
-- `corner`, `pickle`, `json`, `odfpy` (supporting utilities)  
+- `geopandas` (for spatial operations)  
+- `corner`, `pickle`, `json` (supporting utilities)  
 
 ---
 
@@ -50,7 +51,7 @@ We used these datasets provided by the Infodengue-Mosqlimate sprint organisers:
 
 ### Model Architecture  
 - A vector–host SEIR ODE system for humans and mosquitoes  
-- Uses temperature-dependent parameters  
+- Uses temperature- and humidity-dependent parameters  
 - Implemented with Runge–Kutta (RK4) integration accelerated using Numba  
 
 ### Training Procedure  
@@ -64,7 +65,6 @@ We used these datasets provided by the Infodengue-Mosqlimate sprint organisers:
 # 6. References  
 
 - PyMC documentation: https://www.pymc.io/  
-- Meteostat API docs: https://dev.meteostat.net/  
 
 ---
 
@@ -74,7 +74,7 @@ We used these datasets provided by the Infodengue-Mosqlimate sprint organisers:
 - **Forecasting** is done from **EW 41** of the current year through **EW 40** of the following year
 - This split is enforced in:
   - `fit_function()`
-  - `forcast_function()`
+  - `forecast_function()`
 
 ---
 
