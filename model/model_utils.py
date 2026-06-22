@@ -799,8 +799,6 @@ def simulate_dengue_fast_from_scenario(k_v, k_h, s_0, b_factor, inc_factor,
     return results, dt
 
 
-
-
 # Vectors
 #==================
 def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
@@ -847,7 +845,7 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         
         weather_data_df = load_or_fetch_weather(
             state,
-            weather_start_date,
+            start_date_fetch,
             end_date, 
             dict_weather_coeffs, 
             major_cities,
@@ -869,15 +867,22 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         )
         
         df = pd.DataFrame(results, columns=['Pv', 'Sv', 'Sh'])
-        df['data_iniSE'] = pd.date_range(start=start_date, periods=len(df), freq='D')
+        df['data_iniSE'] = pd.date_range(start=start_date_fetch, periods=len(df), freq='D')
         # ordina colonne come prima
         df = df[['data_iniSE', 'Pv', 'Sv', 'Sh']]
-        
+
+        # Filter BEFORE saving to cache
+        mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date)
+        df = df.loc[mask].reset_index(drop=True)
+
+        # Filter BEFORE saving to cache
         df.to_csv(vectors_cache_file, index=False)
         print(f"Saved vector data to {vectors_cache_file}")
-    
+
+    # If cached file exists, filter it
     mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date)
     df = df.loc[mask].reset_index(drop=True)
+    
     return df
 
 
