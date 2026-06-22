@@ -83,8 +83,8 @@ def ode_system(y, k_v, k_h, pi_v, theta_v, b, inc):
     Human compartments:
     - Sh: Susceptible humans
     - Eh: Exposed humans (infected but not infectious)
-    - Ah: Asymptomatic humans (infected, no symptoms, can transmit)
-    - Ih: Infectious/symptomatic humans
+    - Ah: Undetected humans (infected, no symptoms, can transmit)
+    - Ih: Infectious/detected humans
     - Rh: Recovered humans
     - Dh: Dead humans (cumulative)
     
@@ -105,7 +105,7 @@ def ode_system(y, k_v, k_h, pi_v, theta_v, b, inc):
     mortality_factor = mu_v * (Nv / (Nh * cc_v))
     
     # Force of infection (transmission rates)
-    # Both symptomatic and asymptomatic can transmit to vectors
+    # Both detected and undetected can transmit to vectors
     infection_rate_v = b * k_v * ((Ih + Ah) / Nh)  # Human to vector
     infection_rate_h = b * k_h * (Iv / Nh)  # Vector to human
     
@@ -124,14 +124,14 @@ def ode_system(y, k_v, k_h, pi_v, theta_v, b, inc):
     dsh = pi_h * Nh - (mu_h + infection_rate_h) * Sh
     deh = infection_rate_h * Sh - (mu_h + alpha_h) * Eh
     
-    # 50% of exposed become asymptomatic, 50% become symptomatic
+    # 50% of exposed go undetected, 50% become detected
     dah = under_reporting_rate * alpha_h * Eh - (mu_h + beta_h + sigma_h) * Ah
     dih = (1 - under_reporting_rate) * alpha_h * Eh - (mu_h + beta_h + sigma_h) * Ih
     
-    # Recovery from both asymptomatic and symptomatic
+    # Recovery from both undetected and detected
     drh = beta_h * (Ah + Ih) - mu_h * Rh
     
-    # Deaths only from symptomatic cases
+    # Deaths only from detected cases
     ddh = sigma_h * Ih
     
     return np.array([dpv, dsv, dev, dqv, div, ddv, dsh, deh, dah, dih, drh, ddh])
@@ -159,13 +159,13 @@ def initial_conditions_fast(tot_cases, tot_pop, tot_vectors, tot_eggs, s_0):
     """
     Calculate epidemiologically consistent initial conditions.
     
-    Assumes 50% of infected individuals are asymptomatic.
-    Observed cases represent only symptomatic infections.
+    Assumes 50% of infected individuals are undetected.
+    Observed cases represent only detected infections.
     
     Parameters:
     -----------
     tot_cases : float
-        Total observed cases in first week (symptomatic only)
+        Total observed cases in first week (detected only)
     tot_pop : float
         Total population size
     tot_vectors : float
@@ -184,13 +184,13 @@ def initial_conditions_fast(tot_cases, tot_pop, tot_vectors, tot_eggs, s_0):
     Nv = tot_vectors                   # Total vector population
     Ne = tot_eggs                      # Total egg population
 
-    # Estimate initial symptomatic humans from case data
-    ih0 = max(int(tot_cases), 1)       # Infectious symptomatic humans
+    # Estimate initial detected humans from case data
+    ih0 = max(int(tot_cases), 1)       # Infectious detected humans
     
-    # Assume equal numbers of asymptomatic (since 50% split)
-    ah0 = ih0                          # Asymptomatic humans
+    # Assume equal numbers of undetected (since 50% split)
+    ah0 = ih0                          # undetected humans
     
-    # Total exposed is sum of those who will become symptomatic and asymptomatic
+    # Total exposed is sum of those who will become detected and undetected
     eh0 = int((ih0 + ah0) / alpha_h)   # Exposed humans
     
     sh0 = int(s_0 * Nh)            # Susceptible humans
@@ -215,7 +215,7 @@ def simulate_dengue_fast(k_v, k_h, s_0, b_factor, inc_factor,
                          egg_lrate, egg_drate, bite_rate, inc_rate,
                          days, dt = 1.0):
     """
-    Fast simulation of dengue transmission dynamics with asymptomatic compartment.
+    Fast simulation of dengue transmission dynamics with undetected compartment.
     
     NOW RETURNS 12 COMPARTMENTS: [Pv, Sv, Ev, Qv, Iv, Dv, Sh, Eh, Ah, Ih, Rh, Dh]
     
@@ -273,10 +273,10 @@ def simulate_dengue_fast(k_v, k_h, s_0, b_factor, inc_factor,
 def calculate_weekly_cases(results, dt):
     """
     Calculate weekly case incidence from compartment dynamics.
-    NOW ACCOUNTS FOR ASYMPTOMATIC COMPARTMENT (Ah at index 8)
+    NOW ACCOUNTS FOR UNDETECTED COMPARTMENT (Ah at index 8)
     
-    IMPORTANT: Returns only SYMPTOMATIC cases to match surveillance data!
-    Asymptomatic cases are not reported in surveillance systems.
+    IMPORTANT: Returns only detected cases to match surveillance data!
+    Undetected cases are not reported in surveillance systems.
     
     Parameters:
     -----------
@@ -290,15 +290,15 @@ def calculate_weekly_cases(results, dt):
     weeks : array
         Week numbers
     weekly_cases : array
-        Weekly SYMPTOMATIC case counts (for comparison with observed data)
+        Weekly detected case counts (for comparison with observed data)
     """
     # Calculate number of steps per day and per week
     steps_per_day = int(1.0 / dt)
     steps_per_week = 7 * steps_per_day
     
     # Extract required compartments (UPDATED INDICES)
-    Ah = results[:, 8]  # Asymptomatic humans
-    Ih = results[:, 9]  # Infectious symptomatic humans
+    Ah = results[:, 8]  # Undetected humans
+    Ih = results[:, 9]  # Infectious detected humans
     Rh = results[:, 10] # Recovered humans  
     Dh = results[:, 11] # Dead humans
     
@@ -310,17 +310,17 @@ def calculate_weekly_cases(results, dt):
     daily_cases = np.zeros(total_steps)
     weekly_cases = np.zeros(total_weeks + (1 if missing_days > 0 else 0))
     
-    # Calculate daily incidence (SYMPTOMATIC ONLY - matches surveillance data)
-    # Asymptomatic cases are NOT counted as they're not detected
+    # Calculate daily incidence (detected ONLY - matches surveillance data)
+    # Undetected cases are NOT counted as they're not detected
     daily_cases[0] = Ih[0]
     for i in range(1, total_steps):
-        # Only count symptomatic cases for comparison with observed data
+        # Only count detected cases for comparison with observed data
         new_Ih = max(0.0, Ih[i] - Ih[i-1])
         
-        # Approximate recovery flow from symptomatic (50% of total recovery)
+        # Approximate recovery flow from detected (50% of total recovery)
         new_Rh_from_Ih = max(0.0, Rh[i] - Rh[i-1]) * 0.5
         
-        # Deaths only from symptomatic
+        # Deaths only from detected
         new_Dh = max(0.0, Dh[i] - Dh[i-1])
         
         daily_cases[i] = new_Ih + new_Rh_from_Ih + new_Dh
@@ -343,8 +343,8 @@ def Basic_Reproduction_Number_fast(k_h, k_v, mean_bite, Nv, Nh):
     """
     Calculate basic reproduction number (R0) for dengue transmission.
     
-    NOTE: With asymptomatic compartment, both Ah and Ih contribute to transmission.
-    This R0 calculation assumes the combined infectiousness of symptomatic + asymptomatic.
+    NOTE: With undetected compartment, both Ah and Ih contribute to transmission.
+    This R0 calculation assumes the combined infectiousness of detected + undetected.
     
     R0 represents the expected number of secondary infections produced by
     one infected individual in a completely susceptible population.
@@ -381,9 +381,9 @@ def Basic_Reproduction_Number_fast(k_h, k_v, mean_bite, Nv, Nh):
     # Vector infectious duration
     term3 = alpha_v / (mu_v * Nv / (Nh * cc_v))
     
-    # Human infectious duration (average of symptomatic and asymptomatic)
-    # Asymptomatic: 1/(mu_h + beta_h)
-    # Symptomatic: 1/(mu_h + beta_h + sigma_h)
+    # Human infectious duration (average of detected and undetected)
+    # undetected: 1/(mu_h + beta_h)
+    # detected: 1/(mu_h + beta_h + sigma_h)
     # Average with 50% split
     term4_asymp = alpha_h / (mu_h + beta_h)
     term4_symp = alpha_h / (beta_h + mu_h + sigma_h)
@@ -821,7 +821,7 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         print(f"Using cached vectors data for {state}")
         df = pd.read_csv(vectors_cache_file, parse_dates=True)
     else:
-        start_date_fetch = start_date
+        start_date_fetch = "2010-01-03"
         end_date_fetch = end_date
 
         previous_week_date = str(datetime.date(datetime.strptime(start_date_fetch, "%Y-%m-%d") - timedelta(days=1)))
