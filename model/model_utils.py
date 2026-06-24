@@ -208,7 +208,8 @@ def initial_conditions_fast(tot_cases, tot_pop, tot_vectors, tot_eggs, s_0):
 
     return np.array([float(pv0), float(sv0), float(ev0), float(qv0), float(iv0), 0.0, 
                      float(sh0), float(eh0), float(ah0), float(ih0), float(rh0), 0.0])
-    
+
+
 @njit(fastmath=True, cache=True)
 def simulate_dengue_fast(k_v, k_h, s_0, b_factor, inc_factor,
                          tot_cases, tot_pop, tot_vectors, tot_eggs,
@@ -247,27 +248,118 @@ def simulate_dengue_fast(k_v, k_h, s_0, b_factor, inc_factor,
     y = initial_conditions_fast(tot_cases, tot_pop, tot_vectors, tot_eggs, s_0)
     time_steps = int(days / dt)
     
-    # Updated to 12 compartments
-    results = np.zeros((time_steps + 1, 12))
-    results[0] = y
+    # Check if we need to adjust initial cases at the start of the last 365 days
+    # The start of the last 365 time steps corresponds to index (time_steps - 365)
+    if time_steps > 365:
+        # Calculate total current cases (Ih + Ah + Dh) at the start of the last 365 days
+        # We need to simulate first to get the state at that point, then adjust
+        # and re-simulate from there
+        
+        # First, simulate up to the start of the last 365 days
+        temp_results = np.zeros((time_steps - 365 + 1, 12))
+        temp_results[0] = y
+        
+        for i in range(1, time_steps - 365 + 1):
+            idx = min(i, len(egg_lrate) - 1)
+            pi_v = egg_lrate
+            theta_v = egg_drate
+            b = bite_rate * b_factor
+            inc = inc_rate * inc_factor
+            
+            y = rk4_step(y, idx, dt, k_v, k_h, pi_v, theta_v, b, inc)
+            y = np.maximum(y, MIN_VALUE)
+            temp_results[i] = y
+        
+        # Now check total cases (Ih + Ah + Dh) at the start of the last 365 days
+        # Ih is index 9, Ah is index 8, Dh is index 11 in the 12-compartment system
+        total_cases_at_start = y[9] + y[8] + y[11]
+        
+        # If less than 10 cases, adjust to have exactly 10 minimum
+        if total_cases_at_start < 10:
+            # Distribute the 10 cases among compartments
+            # Add to Ah (undetected cases) primarily, and some to Ih and Dh
+            current_total = total_cases_at_start
+            if current_total < 1:  # If practically zero, seed all in Ah
+                y[8] += 10  # Ah (undetected)
+            else:
+                # Scale up proportionally to reach 10 total cases
+                scale_factor = 10.0 / current_total
+                y[8] *= scale_factor  # Ah
+                y[9] *= scale_factor  # Ih
+                y[11] *= scale_factor # Dh
+                
+                # Ensure no negative values
+                y = np.maximum(y, MIN_VALUE)
+            
+            # Also scale Eh (exposed) proportionally to maintain epidemiological consistency
+            # Eh is index 7
+            if current_total > 0 and y[7] > 0:
+                y[7] *= scale_factor
+            elif current_total < 1 and y[7] == 0:
+                # If no exposed individuals, add proportionally
+                y[7] = 10 * 0.3  # Add exposed individuals
+            
+            # Ensure minimum case count
+            y[8] = np.maximum(y[8], 0)
+            y[9] = np.maximum(y[9], 0)
+            y[11] = np.maximum(y[11], 0)
+        
+        # Now continue simulation from the start of the last 365 days
+        # But we need to save the full results
+        results = np.zeros((time_steps + 1, 12))
+        results[:time_steps - 365 + 1] = temp_results
+        
+        # Continue simulation for the remaining 365 days
+        for i in range(time_steps - 365 + 1, time_steps + 1):
+            idx = min(i, len(egg_lrate) - 1)
+            pi_v = egg_lrate
+            theta_v = egg_drate
+            b = bite_rate * b_factor
+            inc = inc_rate * inc_factor
+            
+            y = rk4_step(y, idx, dt, k_v, k_h, pi_v, theta_v, b, inc)
+            y = np.maximum(y, MIN_VALUE)
+            results[i] = y
     
-    # Integrate ODE system day by day
-    for i in range(1, time_steps + 1):
-        # Use weather parameters for current day (with bounds checking)
-        idx = min(i, len(egg_lrate) - 1)
-        pi_v = egg_lrate
-        theta_v = egg_drate
-        b = bite_rate * b_factor
-        inc = inc_rate * inc_factor
+    else:
+        # If simulation is shorter than 365 days, check at the start
+        # Standard simulation
+        results = np.zeros((time_steps + 1, 12))
+        results[0] = y
         
-        # Runge-Kutta integration step
-        y = rk4_step(y, idx, dt, k_v, k_h, pi_v, theta_v, b, inc)
-        # Prevent negative populations
-        y = np.maximum(y, MIN_VALUE)
+        # Check initial cases at the very start
+        total_cases = y[9] + y[8] + y[11]
+        if total_cases < 10:
+            if total_cases < 1:
+                y[8] += 10
+            else:
+                scale_factor = 10.0 / total_cases
+                y[8] *= scale_factor
+                y[9] *= scale_factor
+                y[11] *= scale_factor
+                if y[7] > 0:
+                    y[7] *= scale_factor
+                elif y[7] == 0:
+                    y[7] = 10 * 0.3
+            y = np.maximum(y, 0)
+            results[0] = y
         
-        results[i] = y
+        # Integrate ODE system day by day
+        for i in range(1, time_steps + 1):
+            idx = min(i, len(egg_lrate) - 1)
+            pi_v = egg_lrate
+            theta_v = egg_drate
+            b = bite_rate * b_factor
+            inc = inc_rate * inc_factor
+            
+            y = rk4_step(y, idx, dt, k_v, k_h, pi_v, theta_v, b, inc)
+            y = np.maximum(y, MIN_VALUE)
+            results[i] = y
 
     return results, dt
+ 
+
+
 
 @njit(fastmath=True, cache=True)
 def calculate_weekly_cases(results, dt):
@@ -865,11 +957,14 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
             days=days,
             dt=1.0
         )
+
         
         df = pd.DataFrame(results, columns=['Pv', 'Sv', 'Sh'])
         df['data_iniSE'] = pd.date_range(start=start_date_fetch, periods=len(df), freq='D')
         # ordina colonne come prima
         df = df[['data_iniSE', 'Pv', 'Sv', 'Sh']]
+
+        print(df.head())
 
         # Filter BEFORE saving to cache
         mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date)
@@ -1075,4 +1170,505 @@ def load_posterior_results(timestamp, state, save_dir="./saved_models/"):
     
     return posterior_data, metadata, training_data
 
+
+from scipy.stats import norm
+
+def create_mem_likelihood_mask(observed_cases, 
+                                time_points=None,
+                                epidemic_threshold_percentile=0.90,
+                                min_seasons=5,
+                                min_weeks=4,
+                                map_threshold=0.50,
+                                n_seasons=10,
+                                use_rolling_window=False,
+                                window_size=52):
+    """
+    Create a likelihood mask based on the Moving Epidemic Method (MEM).
+    This function identifies epidemic periods and creates a mask for likelihood
+    computation that focuses on epidemic weeks.
+    
+    Parameters:
+    -----------
+    observed_cases : array-like
+        Time series of observed cases (weekly data expected)
+    time_points : array-like, optional
+        Corresponding time points (weeks) for the observed data
+    epidemic_threshold_percentile : float, default=0.90
+        Percentile threshold for epidemic classification (pre-epidemic threshold)
+    min_seasons : int, default=5
+        Minimum number of seasons required for MEM calculation
+    min_weeks : int, default=4
+        Minimum duration of an epidemic period in weeks
+    map_threshold : float, default=0.50
+        Proportion of seasonal cases to include in epidemic period
+    n_seasons : int, default=10
+        Number of seasons to use in the analysis
+    use_rolling_window : bool, default=False
+        If True, use rolling window for threshold calculation
+    window_size : int, default=52
+        Window size for rolling window approach (weeks)
+    
+    Returns:
+    --------
+    mask : numpy array
+        Boolean mask where True indicates epidemic weeks for likelihood computation
+    thresholds : dict
+        Dictionary containing threshold values and additional information
+    """
+    
+    # Convert to numpy array if needed
+    observed_cases = np.asarray(observed_cases)
+    
+    # If no time points provided, create them
+    if time_points is None:
+        time_points = np.arange(len(observed_cases))
+    
+    # Create DataFrame for analysis
+    df = pd.DataFrame({
+        'cases': observed_cases,
+        'time': time_points,
+        'week': (time_points % 52) + 1,  # Assuming weekly data, weeks 1-52
+        'year': (time_points // 52).astype(int) + 2000  # Arbitrary starting year
+    })
+    
+    # Filter positive cases for analysis
+    df_positive = df[df['cases'] > 0].copy()
+    
+    if len(df_positive) == 0:
+        print("Warning: No positive cases found. Returning mask of all False.")
+        return np.zeros(len(observed_cases), dtype=bool), None
+    
+    # Group by year to create seasons
+    seasons_dict = {}
+    for year in df['year'].unique():
+        year_data = df[df['year'] == year].copy()
+        year_data = year_data.sort_values('week').reset_index(drop=True)
+        if len(year_data) > 0:
+            seasons_dict[year] = year_data['cases'].values
+    
+    # Find maximum season length
+    max_weeks = max(len(v) for v in seasons_dict.values()) if seasons_dict else 52
+    
+    # Create matrix: rows = weeks, columns = years
+    season_matrix = np.zeros((max_weeks, len(seasons_dict)))
+    years_list = sorted(seasons_dict.keys())
+    
+    for i, year in enumerate(years_list):
+        season_data = seasons_dict[year]
+        season_matrix[:len(season_data), i] = season_data
+    
+    pivot_data = pd.DataFrame(
+        season_matrix,
+        columns=years_list,
+        index=range(max_weeks)
+    )
+    
+    # ===================================================================
+    # STEP 1: Filter Extreme Seasons
+    # ===================================================================
+    
+    season_stats = []
+    for year in pivot_data.columns:
+        season_data = pivot_data[year].values
+        positive_vals = season_data[season_data > 0]
+        if len(positive_vals) > 0:
+            geom_mean = np.exp(np.mean(np.log(positive_vals + 1e-10)))
+            peak = season_data.max()
+            season_stats.append({
+                'year': year,
+                'geom_mean': geom_mean,
+                'total_cases': season_data.sum(),
+                'peak': peak
+            })
+    
+    if len(season_stats) < min_seasons:
+        print(f"Warning: Only {len(season_stats)} seasons found. Need at least {min_seasons}.")
+        # Use all available seasons
+        typical_years = years_list
+    else:
+        geom_df = pd.DataFrame(season_stats)
+        
+        # Signed geometric distance
+        geom_df['signed_distance'] = (
+            np.log(geom_df['peak'] + 1e-10) - np.log(geom_df['geom_mean'] + 1e-10)
+        )
+        
+        # Percentiles on signed distance
+        p10 = geom_df['signed_distance'].quantile(0.10)
+        p90 = geom_df['signed_distance'].quantile(0.90)
+        
+        typical_mask = (geom_df['signed_distance'] >= p10) & (geom_df['signed_distance'] <= p90)
+        
+        # Ensure minimum seasons
+        if typical_mask.sum() < min_seasons:
+            median_dist = geom_df['signed_distance'].median()
+            closest_idx = np.argsort(np.abs(geom_df['signed_distance'] - median_dist))[:min_seasons]
+            typical_mask = pd.Series(False, index=geom_df.index)
+            typical_mask.iloc[closest_idx] = True
+        
+        typical_years = geom_df[typical_mask]['year'].tolist()
+    
+    # ===================================================================
+    # STEP 2: Find Epidemic Periods using MAP method
+    # ===================================================================
+    
+    def find_epidemic_period_MAP(season_data, target_proportion=0.50, min_weeks=4):
+        """Find shortest window containing target proportion of cases."""
+        season_data = np.asarray(season_data)
+        total_cases = season_data.sum()
+        
+        if total_cases == 0:
+            return 0, len(season_data)
+        
+        n_weeks = len(season_data)
+        best_start = 0
+        best_length = n_weeks
+        best_proportion = 0
+        
+        for length in range(min_weeks, n_weeks + 1):
+            for start in range(n_weeks - length + 1):
+                window_sum = season_data[start:start + length].sum()
+                proportion = window_sum / total_cases
+                
+                if proportion >= target_proportion:
+                    if length < best_length:
+                        best_length = length
+                        best_start = start
+                        best_proportion = proportion
+                    break
+        
+        return best_start, best_length
+    
+    # Calculate epidemic periods for typical seasons
+    epidemic_periods = []
+    for year in typical_years:
+        season_data = pivot_data[year].values
+        start, length = find_epidemic_period_MAP(
+            season_data, map_threshold, min_weeks
+        )
+        
+        epidemic_periods.append({
+            'year': year,
+            'start': start,
+            'length': length,
+            'end': start + length - 1
+        })
+    
+    epidemic_df = pd.DataFrame(epidemic_periods)
+    
+    # ===================================================================
+    # STEP 3: Calculate Thresholds
+    # ===================================================================
+    
+    # Collect pre-epidemic and epidemic values
+    pre_epidemic_values = []
+    epidemic_values = []
+    post_epidemic_values = []
+    
+    for _, row in epidemic_df.iterrows():
+        year = row['year']
+        start = row['start']
+        end = row['end']
+        
+        season_data = pivot_data[year].values
+        
+        # Collect values
+        if start > 0:
+            pre_epidemic_values.extend(season_data[:start])
+        
+        epidemic_values.extend(season_data[start:end + 1])
+        
+        if end < len(season_data) - 1:
+            post_epidemic_values.extend(season_data[end + 1:])
+    
+    # Convert to arrays and filter zero/positive values
+    pre_epidemic_values = np.array([v for v in pre_epidemic_values if v > 0])
+    epidemic_values = np.array([v for v in epidemic_values if v > 0])
+    post_epidemic_values = np.array([v for v in post_epidemic_values if v > 0])
+    
+    # Calculate thresholds using log-normal fit
+    def calculate_threshold(values, percentile):
+        if len(values) > 5:
+            # Fit log-normal distribution
+            mu, sd = norm.fit(np.log(values + 1e-10))
+            threshold = np.exp(norm.ppf(percentile, mu, sd))
+        else:
+            # Use percentile directly
+            threshold = np.percentile(values, percentile * 100)
+        return threshold
+    
+    # Calculate pre-epidemic threshold
+    if len(pre_epidemic_values) > 0:
+        pre_epidemic_threshold = calculate_threshold(
+            pre_epidemic_values, epidemic_threshold_percentile
+        )
+    else:
+        pre_epidemic_threshold = np.percentile(epidemic_values, 50)
+    
+    # Calculate post-epidemic threshold
+    if len(post_epidemic_values) > 0:
+        post_epidemic_threshold = calculate_threshold(
+            post_epidemic_values, epidemic_threshold_percentile
+        )
+    else:
+        post_epidemic_threshold = pre_epidemic_threshold
+    
+    # Epidemic threshold: average of pre and post
+    epidemic_threshold = (pre_epidemic_threshold + post_epidemic_threshold) / 2
+    
+    # Calculate intensity thresholds
+    if len(epidemic_values) > 3:
+        mu_p, sd_p = norm.fit(np.log(epidemic_values + 1e-10))
+        low_threshold = np.exp(norm.ppf(0.40, mu_p, sd_p))
+        moderate_threshold = np.exp(norm.ppf(0.90, mu_p, sd_p))
+        high_threshold = np.exp(norm.ppf(0.975, mu_p, sd_p))
+    else:
+        low_threshold = np.percentile(epidemic_values, 40)
+        moderate_threshold = np.percentile(epidemic_values, 90)
+        high_threshold = np.percentile(epidemic_values, 97.5)
+    
+    # ===================================================================
+    # STEP 4: Create Mask for Likelihood Computation
+    # ===================================================================
+    
+    # Create mask based on epidemic threshold
+    mask = observed_cases > epidemic_threshold
+    
+    # If using rolling window, refine the mask
+    if use_rolling_window and window_size > 0:
+        rolling_mask = np.zeros_like(observed_cases, dtype=bool)
+        for i in range(len(observed_cases) - window_size + 1):
+            window = observed_cases[i:i + window_size]
+            window_threshold = np.percentile(window, epidemic_threshold_percentile * 100)
+            rolling_mask[i:i + window_size] = window > window_threshold
+        mask = rolling_mask
+    
+    # Store thresholds and metadata
+    thresholds = {
+        'pre_epidemic_threshold': pre_epidemic_threshold,
+        'post_epidemic_threshold': post_epidemic_threshold,
+        'epidemic_threshold': epidemic_threshold,
+        'low_intensity_threshold': low_threshold,
+        'moderate_intensity_threshold': moderate_threshold,
+        'high_intensity_threshold': high_threshold,
+        'typical_seasons': typical_years,
+        'n_typical_seasons': len(typical_years),
+        'n_weeks_classified_as_epidemic': np.sum(mask),
+        'mask_percentage': np.sum(mask) / len(mask) * 100
+    }
+    
+    print(f"\n{'='*70}")
+    print(f"MEM LIKELIHOOD MASK CREATION")
+    print(f"{'='*70}")
+    print(f"Total weeks:                 {len(observed_cases)}")
+    print(f"Typical seasons:             {len(typical_years)}")
+    print(f"Weeks classified as epidemic: {thresholds['n_weeks_classified_as_epidemic']}")
+    print(f"Percentage epidemic:         {thresholds['mask_percentage']:.1f}%")
+    print(f"\nThresholds:")
+    print(f"  Pre-epidemic:   {pre_epidemic_threshold:.2f}")
+    print(f"  Post-epidemic:  {post_epidemic_threshold:.2f}")
+    print(f"  Epidemic:       {epidemic_threshold:.2f}")
+    print(f"  Low:            {low_threshold:.2f}")
+    print(f"  Moderate:       {moderate_threshold:.2f}")
+    print(f"  High:           {high_threshold:.2f}")
+    print(f"{'='*70}\n")
+    
+    return mask, thresholds
+
+#define moving epidemic method for states
+def precompute_mem_thresholds_for_states(states_list, 
+                                         geo_data, 
+                                         start_date_fetch, 
+                                         end_date_fetch,
+                                         base_output_dir="./data_imdc_2026/mem",
+                                         epidemic_threshold_percentile=0.90,
+                                         min_seasons=5,
+                                         min_weeks=4,
+                                         map_threshold=0.50,
+                                         n_seasons=10,
+                                         force_recompute=False):
+    """
+    Pre-compute MEM thresholds for multiple states and save them to CSV files.
+    
+    Parameters:
+    -----------
+    states_list : list
+        List of state names to process
+    geo_data : DataFrame
+        Geographic data containing state information
+    start_date_fetch : str
+        Start date for fetching data (format: 'YYYY-MM-DD')
+    end_date_fetch : str
+        End date for fetching data (format: 'YYYY-MM-DD')
+    base_output_dir : str
+        Base directory for saving MEM thresholds
+    epidemic_threshold_percentile : float
+        Percentile threshold for epidemic classification
+    min_seasons : int
+        Minimum number of seasons required for MEM calculation
+    min_weeks : int
+        Minimum duration of an epidemic period in weeks
+    map_threshold : float
+        Proportion of seasonal cases to include in epidemic period
+    n_seasons : int
+        Number of seasons to use in the analysis
+    force_recompute : bool
+        If True, recompute even if cache exists
+    
+    Returns:
+    --------
+    mem_results : dict
+        Dictionary mapping state names to their MEM thresholds
+    """
+    
+    mem_results = {}
+    
+    for state in states_list:
+        print(f"\n{'#'*70}")
+        print(f"Processing state: {state}")
+        print(f"{'#'*70}")
+        
+        # Get state geocodes
+        geo_data_state = geo_data[geo_data['uf'] == state]
+        if len(geo_data_state) == 0:
+            print(f"Warning: State '{state}' not found in geo_data. Skipping...")
+            continue
+            
+        state_geocodes = geo_data_state['geocode'].astype(int).tolist()
+        
+        # Create state directory
+        mem_state_dir = os.path.join(base_output_dir, state)
+        os.makedirs(mem_state_dir, exist_ok=True)
+        mem_cache_file = os.path.join(mem_state_dir, "mem_thresholds.csv")
+        
+        # Check if thresholds already exist
+        if os.path.exists(mem_cache_file) and not force_recompute:
+            print(f"Loading existing MEM thresholds from {mem_cache_file}")
+            thresholds_df = pd.read_csv(mem_cache_file)
+            thresholds = thresholds_df.to_dict('records')[0]
+            
+            # Convert stored string list back to list
+            if 'typical_seasons' in thresholds and isinstance(thresholds['typical_seasons'], str):
+                thresholds['typical_seasons'] = eval(thresholds['typical_seasons'])
+            
+            mem_results[state] = thresholds
+            print(f"Loaded thresholds for {state}")
+            continue
+        
+        try:
+            # Fetch dengue data for the state
+            df_csv, major_cities = fetch_dengue_data_state_from_csv(
+                state_geocodes, start_date_fetch, end_date_fetch
+            )
+            
+            if df_csv.empty:
+                print(f"Warning: No data found for {state}. Skipping...")
+                continue
+            
+            # Force dates to Sunday
+            df_csv['data_iniSE'] = force_sunday(df_csv['data_iniSE'])
+            
+            # Aggregate cases by week
+            df_csv['week'] = df_csv['data_iniSE'].dt.isocalendar().week
+            df_csv['year'] = df_csv['data_iniSE'].dt.year
+            
+            # Aggregate cases per week
+            weekly_cases = df_csv.groupby(['year', 'week'])['casos'].sum().reset_index()
+            weekly_cases = weekly_cases.sort_values(['year', 'week']).reset_index(drop=True)
+            
+            # Get observed cases time series
+            observed_cases = weekly_cases['casos'].values
+            
+            # Create time points (weeks from start)
+            if len(weekly_cases) > 0:
+                # Create a continuous time index
+                start_week = weekly_cases.iloc[0]['week']
+                start_year = weekly_cases.iloc[0]['year']
+                time_points = []
+                
+                for _, row in weekly_cases.iterrows():
+                    # Calculate week number from start
+                    week_num = (row['year'] - start_year) * 52 + (row['week'] - start_week)
+                    time_points.append(week_num)
+                
+                time_points = np.array(time_points)
+            else:
+                print(f"Warning: No cases found for {state}. Skipping...")
+                continue
+            
+            print(f"Found {len(observed_cases)} weeks of data for {state}")
+            
+            # Create MEM mask and thresholds
+            mask, thresholds = create_mem_likelihood_mask(
+                observed_cases=observed_cases,
+                time_points=time_points,
+                epidemic_threshold_percentile=epidemic_threshold_percentile,
+                min_seasons=min_seasons,
+                min_weeks=min_weeks,
+                map_threshold=map_threshold,
+                n_seasons=n_seasons,
+                use_rolling_window=False
+            )
+            
+            # Save thresholds to CSV
+            thresholds_df = pd.DataFrame([{
+                'state': state,
+                'pre_epidemic_threshold': thresholds['pre_epidemic_threshold'],
+                'post_epidemic_threshold': thresholds['post_epidemic_threshold'],
+                'epidemic_threshold': thresholds['epidemic_threshold'],
+                'low_intensity_threshold': thresholds['low_intensity_threshold'],
+                'moderate_intensity_threshold': thresholds['moderate_intensity_threshold'],
+                'high_intensity_threshold': thresholds['high_intensity_threshold'],
+                'n_typical_seasons': thresholds['n_typical_seasons'],
+                'typical_seasons': str(thresholds['typical_seasons']),
+                'n_weeks_classified_as_epidemic': thresholds['n_weeks_classified_as_epidemic'],
+                'mask_percentage': thresholds['mask_percentage'],
+                'total_weeks': len(observed_cases),
+                'start_date': start_date_fetch,
+                'end_date': end_date_fetch
+            }])
+            
+            thresholds_df.to_csv(mem_cache_file, index=False)
+            print(f"Saved MEM thresholds to {mem_cache_file}")
+            
+            # Store in results
+            mem_results[state] = thresholds
+            
+        except Exception as e:
+            print(f"Error processing {state}: {str(e)}")
+            continue
+    
+    return mem_results
+
+
+def load_mem_thresholds_for_state(state, base_output_dir="./data_imdc_2026/mem"):
+    """
+    Load pre-computed MEM thresholds for a specific state.
+    
+    Parameters:
+    -----------
+    state : str
+        State name
+    base_output_dir : str
+        Base directory where MEM thresholds are stored
+    
+    Returns:
+    --------
+    thresholds : dict
+        Dictionary containing MEM thresholds
+    """
+    mem_cache_file = os.path.join(base_output_dir, state, "mem_thresholds.csv")
+    
+    if not os.path.exists(mem_cache_file):
+        print(f"Warning: No MEM thresholds found for {state} at {mem_cache_file}")
+        return None
+    
+    thresholds_df = pd.read_csv(mem_cache_file)
+    thresholds = thresholds_df.to_dict('records')[0]
+    
+    # Convert stored string list back to list
+    if 'typical_seasons' in thresholds and isinstance(thresholds['typical_seasons'], str):
+        thresholds['typical_seasons'] = eval(thresholds['typical_seasons'])
+    
+    return thresholds
     

@@ -7,6 +7,7 @@ import numpy as np
 import csv
 import pickle
 import matplotlib.dates as mdates
+from sympy import exp
 
 # Dengue surveillance data API configuration
 #infodengue_api = "https://api.mosqlimate.org/api/datastore/infodengue/"
@@ -134,7 +135,7 @@ def fetch_dengue_data_state_from_csv(state_geocodes, start_date, end_date):
     weekly_cases : pd.DataFrame
         Aggregated weekly dengue cases with population data
     """
-    # Load compressed dengue surveillance data
+    # Load dengue surveillance data
     cases_data = pd.read_csv(
         './data_imdc_2026/dengue.csv',
         parse_dates=['date'],
@@ -201,7 +202,7 @@ def load_or_fetch_cases(state, state_geocodes, start_date, end_date): #XX check 
     cases_state_dir = f"./data_imdc_2026/cases_state/{state}"
     os.makedirs(cases_state_dir, exist_ok=True)
     state_cache_file = os.path.join(cases_state_dir, "cases.csv")
-    
+
     major_cities_dir = f"./data_imdc_2026/major_cities/{state}"
     os.makedirs(major_cities_dir, exist_ok=True)
     major_cities_cache_file = os.path.join(major_cities_dir, "major.pickle")
@@ -370,10 +371,10 @@ def weather_functions_Aedes(geocodes, start_date, end_date, coeffs):
     
     for t in range(weather_data.shape[0]):
         Temp = weather_data['temp_r'].iloc[t]
-    
+
         # Calculation of development rate
-        Theta[t] = A * ((Temp + K) / 298.15) * math.exp((HA / (1.987)) * (1 / 298.15 - 1 / (Temp + K))) * \
-            (1 + math.exp((HH / (1.987)) * (1 / TH - 1 / (Temp + K))))
+        Theta[t] = A * ((Temp + K) / 298.15) * exp((HA / (1.987)) * (1 / 298.15 - 1 / (Temp + K))) * \
+            (1 + exp((HH / (1.987)) * (1 / TH - 1 / (Temp + K))))
             
         # Brière function for biting rate
         Bite[t] = Briere(Temp, 1, 15, 40.08)
@@ -422,12 +423,12 @@ def fetch_weather_data(geocodes, start_date, end_date):
 
     weather_data = pd.read_parquet(
         './data_imdc_2026/weather_data_daily.parquet', engine='fastparquet',
-        columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med','dwpt','evap'])
+        columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
 
     weather_data['geocode'] = weather_data['geocode'].astype(int)
     data = weather_data[weather_data.geocode.isin(geocodes)]   
     data = data[(data.date>start_date) & (data.date<end_date)]     
-    data = data[['geocode','date','temp_med', 'dwpt', 'rel_humid_med', 'precip_med', 'dwpt', 'evap']]
+    data = data[['geocode','date','temp_med', 'rel_humid_med', 'precip_med']]
     data = data.rename(columns={'temp_med':'temp','rel_humid_med':'rhum','precip_med':'prcp'})
 
     return data
@@ -459,10 +460,13 @@ def get_state_weather_data(start_date, end_date, weather_coeffs, state_geocodes)
     
     weather_data_list = []
     successful_cities = []
+
+    # Calculate expected length (number of days in your date range)
+    expected_length = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days - 3
     
     # Collect weather data from multiple cities to reduce spatial bias
     # XX need to take the 10 most populated cities here
-        
+    
     for geocode in state_geocodes:
         print(geocode)
         weather_data = weather_functions_Aedes(
@@ -471,9 +475,17 @@ def get_state_weather_data(start_date, end_date, weather_coeffs, state_geocodes)
             pd.to_datetime(end_date), 
             weather_coeffs
         )
-
-        weather_data_list.append(weather_data)
-        successful_cities.append(geocode)
+    
+        # Check if we got data and it has the expected length
+        if weather_data is not None and len(weather_data) == expected_length:
+            weather_data_list.append(weather_data)
+            successful_cities.append(geocode)
+            print(f"  ✓ Added {geocode} with {len(weather_data)}/{expected_length} days")
+        else:
+            if weather_data is None:
+                print(f"  ✗ SKIPPED {geocode}: No data returned")
+            else:
+                print(f"  ✗ SKIPPED {geocode}: Has {len(weather_data)} days, expected {expected_length} days")
     
     # Average weather-dependent parameters across cities
     avg_weather_data = weather_data_list[0].copy()
