@@ -395,7 +395,7 @@ def weather_functions_Aedes(geocodes, start_date, end_date, coeffs):
             Moisture = Precipitation - Evaporation
             weather_data.loc[weather_data.index[t], 'moisture'] = Moisture"""
             # Sigmoid response to moisture availability
-        Egg[t] = b0 + Emax / (1 + math.exp(-(weather_data['rhum'].iloc[t] - Emean) / Evar))
+        Egg[t] = b0 + Emax / (1 + exp(-(weather_data['rhum'].iloc[t] - Emean) / Evar))
 
     weather_data['theta'] = Theta
     weather_data['egg'] = Egg

@@ -64,6 +64,15 @@ prior_specs = {
         #"inc_factor": (3.6e-5, 1.09e-4)  # Original
         "inc_factor": (1.5e-5, 5.5e-5)  # Original
         
+    },
+    "very-informative": {
+        "k_v": (2, 20),          # Original
+        "k_h": (8, 5.5),         # Original
+        "s_0": (2, 5),        # Original (2, 5),
+        "b_factor": (0, 5e-4),   # Original  ,
+        #"inc_factor": (3.6e-5, 1.09e-4)  # Original
+        "inc_factor": (1e-6, 1e-4)  # Original
+        
     }
 }
             
