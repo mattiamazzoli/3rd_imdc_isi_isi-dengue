@@ -464,7 +464,7 @@ def simulate_dengue_wrapper(params, egg_lrate, egg_drate, bite_rate, inc_rate,
 
 def fit_function(state, start_date, end_date, geodata, progress_bar_bool=True, 
                 alpha_fixed=0.915802, fit_weeks=None, plot_results=True,
-                plot_priors=True, prior_config="informative"):
+                plot_priors=True, prior_config="very-informative"):
     """
     Fit dengue transmission model using Bayesian parameter estimation.
     
@@ -573,6 +573,10 @@ def fit_function(state, start_date, end_date, geodata, progress_bar_bool=True,
 
     if np.sum(mask) < 10:
         threshold_n = np.percentile(observed_cases,85) # if season under mem, use percentile
+        # Create a mask: True for weeks where cases > nth percentile
+        mask = observed_cases > threshold_n
+
+    
 
     print(f"Using {np.sum(mask)} out of {len(mask)} weeks for likelihood computation")
     print(f"Threshold: {threshold_n:.2f}")
@@ -608,7 +612,7 @@ def fit_function(state, start_date, end_date, geodata, progress_bar_bool=True,
         # N_CORES*1000 posterior samples, plenty for these intervals, at
         # roughly half the peak memory and wall-clock of the original.
         trace = pm.sample_smc(
-            draws=1000,
+            draws=1500,
             chains=N_CORES,
             cores=N_CORES,
             progressbar=progress_bar_bool,

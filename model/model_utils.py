@@ -66,12 +66,12 @@ prior_specs = {
         
     },
     "very-informative": {
-        "k_v": (2, 20),          # Original
+        "k_v": (2, 35),          # Original
         "k_h": (8, 5.5),         # Original
         "s_0": (2, 5),        # Original (2, 5),
         "b_factor": (0, 5e-4),   # Original  ,
         #"inc_factor": (3.6e-5, 1.09e-4)  # Original
-        "inc_factor": (1e-5, 1e-5)  # Original
+        "inc_factor": (1e-6, 5.5e-5)  # Original
         
     }
 }
@@ -223,7 +223,7 @@ def initial_conditions_fast(tot_cases, tot_pop, tot_vectors, tot_eggs, s_0):
 def simulate_dengue_fast(k_v, k_h, s_0, b_factor, inc_factor,
                          tot_cases, tot_pop, tot_vectors, tot_eggs,
                          egg_lrate, egg_drate, bite_rate, inc_rate,
-                         days, dt = 0.5):
+                         days, dt = 1.0):
     """
     Fast simulation of dengue transmission dynamics with undetected compartment.
     
@@ -850,7 +850,7 @@ def plot_posterior_analysis(trace, fit_results, csv_state_cases_df, state,
 def simulate_dengue_fast_from_scenario(k_v, k_h, s_0, b_factor, inc_factor,
                                        final_state_training,
                                        egg_lrate, egg_drate, bite_rate, inc_rate,
-                                       days, dt=0.5):
+                                       days, dt=1.0):
     """
     Fast simulation of dengue transmission using final training state as initial condition.
     
