@@ -902,14 +902,14 @@ def simulate_dengue_fast_from_scenario(k_v, k_h, s_0, b_factor, inc_factor,
 
 # Vectors
 #==================
-def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
+def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode, validation_round):
     """
     Load cached cases data for a state if available,
     otherwise fetch and cache it.
     Uses 'time' as index.
     """
 
-    vectors_state_dir = f"./data_imdc_2026/{state}"
+    vectors_state_dir = f"./data_imdc_2026/{state}/{validation_round}"
     os.makedirs(vectors_state_dir, exist_ok=True)
     if mode == 'train':
         vectors_cache_file = os.path.join(vectors_state_dir, "vectors.csv")
@@ -944,7 +944,8 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
             state,
             state_geocodes,
             pd.to_datetime(previous_week_date),
-            pd.to_datetime(end_date)
+            pd.to_datetime(end_date),
+            validation_round
         )
         observed_cases = cases_df['casos'].to_numpy()
         
@@ -954,7 +955,8 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
             end_date_weather, 
             dict_weather_coeffs, 
             major_cities,
-            mode
+            mode,
+            validation_round
         )
     
         inc_rate = np.array(weather_data_df['incubation'], dtype=np.float64)

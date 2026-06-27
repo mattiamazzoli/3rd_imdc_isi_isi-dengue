@@ -193,13 +193,13 @@ def force_sunday(series):
 
     return series + pd.to_timedelta(offset_days, unit="D")
 
-def load_or_fetch_cases(state, state_geocodes, start_date, end_date): #XX check if it's better using train-target
+def load_or_fetch_cases(state, state_geocodes, start_date, end_date, validation_round): 
     """
     Load cached cases data for a state if available,
     otherwise fetch and cache it.
     Uses 'time' as index.
     """
-    cases_state_dir = f"./data_imdc_2026/cases_state/{state}"
+    cases_state_dir = f"./data_imdc_2026/cases_state/{state}/{validation_round}"
     os.makedirs(cases_state_dir, exist_ok=True)
     state_cache_file = os.path.join(cases_state_dir, "cases.csv")
 
@@ -421,14 +421,9 @@ def fetch_weather_data(geocodes, start_date, end_date):
       #  parse_dates=['date'],
        # usecols=['geocode','date','epiweek','temp_med','rel_humid_med','precip_med','pressure_med','dwpt','evap'])
 
-    if end_date > pd.to_datetime('2026-03-15'):
-        weather_data = pd.read_parquet(
-            './data_imdc_2026/forecasted_weather_daily.parquet', engine='fastparquet',
-            columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
-    else:
-        weather_data = pd.read_parquet(
-            './data_imdc_2026/weather_data_daily.parquet', engine='fastparquet',
-            columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
+    weather_data = pd.read_parquet(
+        './data_imdc_2026/forecasted_weather_daily.parquet', engine='fastparquet',
+        columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
 
     weather_data['geocode'] = weather_data['geocode'].astype(int)
     data = weather_data[weather_data.geocode.isin(geocodes)]   
@@ -467,7 +462,7 @@ def get_state_weather_data(start_date, end_date, weather_coeffs, state_geocodes)
     successful_cities = []
 
     # Calculate expected length (number of days in your date range)
-    expected_length = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days - 3
+    expected_length = (pd.to_datetime(end_date) - pd.to_datetime(start_date)).days - 2
     
     # Collect weather data from multiple cities to reduce spatial bias
     # XX need to take the 10 most populated cities here
@@ -482,7 +477,7 @@ def get_state_weather_data(start_date, end_date, weather_coeffs, state_geocodes)
         )
     
         # Check if we got data and it has the expected length
-        if weather_data is not None and len(weather_data) == expected_length:
+        if weather_data is not None and len(weather_data) > (expected_length - 2):
             weather_data_list.append(weather_data)
             successful_cities.append(geocode)
             print(f"  ✓ Added {geocode} with {len(weather_data)}/{expected_length} days")
@@ -502,14 +497,14 @@ def get_state_weather_data(start_date, end_date, weather_coeffs, state_geocodes)
     return avg_weather_data
 
 
-def load_or_fetch_weather(state, start_date, end_date, dict_weather_coeffs, state_geocodes, mode):
+def load_or_fetch_weather(state, start_date, end_date, dict_weather_coeffs, state_geocodes, mode, validation_round):
     """
     Load cached weather data for a state if available,
     otherwise fetch and cache it.
     Uses 'time' as index.
     """
     
-    state_dir = f"./data_imdc_2026/weather_state/{state}"
+    state_dir = f"./data_imdc_2026/weather_state/{state}/{validation_round}"
     os.makedirs(state_dir, exist_ok=True)  # make sure directory exists
     if mode == 'train':
         cache_file = os.path.join(state_dir, "weather.csv")
