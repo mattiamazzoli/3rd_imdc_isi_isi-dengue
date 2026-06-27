@@ -62,7 +62,7 @@ prior_specs = {
         "s_0": (2, 5),        # Original (2, 5),
         "b_factor": (0, 1e-2),   # Original  ,
         #"inc_factor": (3.6e-5, 1.09e-4)  # Original
-        "inc_factor": (1.5e-5, 5.5e-5)  # Original
+        "inc_factor": (1e-5, 5.5e-5)  # Original 
         
     },
     "very-informative": {
@@ -71,7 +71,7 @@ prior_specs = {
         "s_0": (2, 5),        # Original (2, 5),
         "b_factor": (0, 5e-4),   # Original  ,
         #"inc_factor": (3.6e-5, 1.09e-4)  # Original
-        "inc_factor": (1e-6, 1e-4)  # Original
+        "inc_factor": (1e-5, 1e-5)  # Original
         
     }
 }
@@ -921,21 +921,25 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         df = pd.read_csv(vectors_cache_file, parse_dates=True)
     else:
         start_date_fetch = "2010-01-03"
+        end_date_weather = end_date
+        if end_date > '2026-03-15':
+            end_date = '2026-03-15' #keep this end date for cases, use end_date_weather for forecasted weather
+        
         end_date_fetch = end_date
 
         previous_week_date = str(datetime.date(datetime.strptime(start_date_fetch, "%Y-%m-%d") - timedelta(days=1)))
         weather_start_date = str(datetime.date(datetime.strptime(previous_week_date, "%Y-%m-%d") - timedelta(days=2)))
-        date_difference = datetime.strptime(end_date_fetch, "%Y-%m-%d") - datetime.strptime(start_date_fetch, "%Y-%m-%d")
+        date_difference = datetime.strptime(end_date_weather, "%Y-%m-%d") - datetime.strptime(start_date_fetch, "%Y-%m-%d")
         days = date_difference.days
 
         if days % 7 != 0:
-            end_date_fetch = str(datetime.date(datetime.strptime(end_date_fetch, "%Y-%m-%d") - timedelta(days=days % 7) + timedelta(days=7)))
-            date_difference = datetime.strptime(end_date_fetch, "%Y-%m-%d") - datetime.strptime(start_date_fetch, "%Y-%m-%d")
+            end_date_weather = str(datetime.date(datetime.strptime(end_date_weather, "%Y-%m-%d") - timedelta(days=days % 7) + timedelta(days=7)))
+            date_difference = datetime.strptime(end_date_weather, "%Y-%m-%d") - datetime.strptime(start_date_fetch, "%Y-%m-%d")
             days = date_difference.days
 
         geo_data_state = geo_data[geo_data['uf'] == state]
         state_geocodes = geo_data_state['geocode'].astype(int).tolist()
-
+        
         cases_df, major_cities = load_or_fetch_cases(
             state,
             state_geocodes,
@@ -947,7 +951,7 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         weather_data_df = load_or_fetch_weather(
             state,
             start_date_fetch,
-            end_date, 
+            end_date_weather, 
             dict_weather_coeffs, 
             major_cities,
             mode
@@ -976,7 +980,7 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         print(df.head())
 
         # Filter BEFORE saving to cache
-        mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date)
+        mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date_weather) # use this to keep the forecasted data
         df = df.loc[mask].reset_index(drop=True)
 
         # Filter BEFORE saving to cache
@@ -984,7 +988,7 @@ def load_or_fetch_vectors(state, geo_data, start_date, end_date, mode):
         print(f"Saved vector data to {vectors_cache_file}")
 
     # If cached file exists, filter it
-    mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date)
+    mask = (df['data_iniSE'] >= start_date) & (df['data_iniSE'] <= end_date) # if cashed, no need to fetch cases, can pass end_date as it is
     df = df.loc[mask].reset_index(drop=True)
     
     return df

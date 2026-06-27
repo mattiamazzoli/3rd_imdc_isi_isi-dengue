@@ -421,9 +421,14 @@ def fetch_weather_data(geocodes, start_date, end_date):
       #  parse_dates=['date'],
        # usecols=['geocode','date','epiweek','temp_med','rel_humid_med','precip_med','pressure_med','dwpt','evap'])
 
-    weather_data = pd.read_parquet(
-        './data_imdc_2026/weather_data_daily.parquet', engine='fastparquet',
-        columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
+    if end_date > pd.to_datetime('2026-03-15'):
+        weather_data = pd.read_parquet(
+            './data_imdc_2026/forecasted_weather_daily.parquet', engine='fastparquet',
+            columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
+    else:
+        weather_data = pd.read_parquet(
+            './data_imdc_2026/weather_data_daily.parquet', engine='fastparquet',
+            columns=['geocode','date','temp_med','rel_humid_med','precip_med','pressure_med'])
 
     weather_data['geocode'] = weather_data['geocode'].astype(int)
     data = weather_data[weather_data.geocode.isin(geocodes)]   
