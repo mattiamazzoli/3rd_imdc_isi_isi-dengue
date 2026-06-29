@@ -4,13 +4,26 @@
 ### Members  
 * **Davide Nicola** – Junior Researcher, ISI Foundation
 * **Daniela Paolotti** – Senior Researcher, ISI Foundation 
-* **Mattia Mazzoli** – Senior Researcher, ISI Foundation 
+* **Mattia Mazzoli** – Senior Researcher, ISI Foundation
 
 ---
 
 # 2. Repository Structure  
 <pre>
-TBD
+3rd_imdc_isi_isi-dengue/
+│
+├── Demo Notebooks/             # Demo notebooks inherited from the template repo
+│   
+├── img/                        # Demo images for the challenge template
+│
+└── model/                                                  # ISI-Dengue model for the 3rd IMDC
+    ├── utils.py                                            # basic functions for extraction of cases and weather variables
+    ├── model_utils.py                                      # basic functions for computation of weather-based vectors behavior and demography
+    ├── forecast_plot.py                                    # optional function for plotting forecasted epidemic curves
+    ├── Sprint_2026_Forecast.py                             # main code, ODE solver, calibration, forecast and upload of results
+    ├── Sprint_2026_Prepare_daily_weather.ipynb             # weather-data processing, from weekly to daily reconstructed trends by geocode
+    └── Sprint_2026_Prepare_daily_weather-forecast.ipynb    # merge daily weather-data from forecasted weather-data by geocode 
+  
 </pre>
 
 ---
@@ -86,4 +99,6 @@ We used these datasets provided by the Infodengue-Mosqlimate sprint organisers:
 - These bounds are returned in forecast CSVs inside the `forecasts/` directory  
 
 ---
+
+Original model from the previous IMDC: [https://github.com/DavideNicola/ISI_Dengue_Model?tab=readme-ov-file](https://github.com/DavideNicola/ISI_Dengue_Model)
 
