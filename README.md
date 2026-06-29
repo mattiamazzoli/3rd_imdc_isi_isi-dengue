@@ -22,7 +22,7 @@
     ├── forecast_plot.py                                    # optional function for plotting forecasted epidemic curves
     ├── Sprint_2026_Forecast.py                             # main code, ODE solver, calibration, forecast and upload of results
     ├── Sprint_2026_Prepare_daily_weather.ipynb             # weather-data processing, from weekly to daily reconstructed trends by geocode
-    └── Sprint_2026_Prepare_daily_weather-forecast.ipynb    # merge daily weather-data from forecasted weather-data by geocode 
+    └── Sprint_2026_Prepare_daily_weather-forecast.ipynb    # merge daily past and forecasted weather-data by geocode 
   
 </pre>
 
